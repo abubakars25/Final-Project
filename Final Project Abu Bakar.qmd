@@ -1,0 +1,354 @@
+---
+title: "Final Project"
+author: "Abu Bakar Siddique"
+date: today
+format: 
+  pdf:
+    include-in-header: 
+       text: |
+         \usepackage{fvextra}
+         \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,commandchars=\\\{\}}
+include-before-body:
+  text: |
+    \RecustomVerbatimEnvironment{verbatim}{Verbatim}{
+      showspaces = false,
+      showtabs = false,
+      breaksymbolleft={},
+      breaklines
+    }
+---
+```{python}
+import pandas as pd
+# Load the NYC civil jobs data set in data frame
+df = pd.read_csv("Jobs_NYC_Postings.csv")
+df.head()
+```
+
+```{python}
+print(f'Initially the data has {df.shape[0]} records')
+```
+```{python}
+#### There are multiple job postings because of various reasons. Displaying a few cases with multiple postings having same Job ID.
+
+df[df['Job ID'] == df['Job ID'].value_counts().idxmax()]
+
+```
+```{python}
+df[df['Job ID'] == 686510]
+```
+```{python}
+### Dropping multiple instances of the Job postings
+
+df_unique = df.drop_duplicates(subset=['Job ID'])
+```
+```{python}
+print(f'After removing duplicate postings there are {df_unique.shape[0]} postingss with unique JOb IDs')
+```
+```{python}
+## Reading the dataframe with coordinates information
+
+##Reading the coordinates from the address is a time consume step. I have seprately found the coordinates of the address and added into a different file
+
+```
+```{python}
+df_coordinates = pd.read_csv("NYC_addresses_with_coordinates_final.csv")
+```
+```{python}
+#Removing the address column
+df_coordinates = df_coordinates[['Job ID', 'latitude', 'longitude']]
+```
+```{python}
+#Removing the duplicate Job IDs 
+df_coordinates_unique = df_coordinates.drop_duplicates(subset=['Job ID'])
+```
+```{python}
+df_coordinates_unique.describe()
+```
+```{python}
+merged_df = pd.merge(df_unique, df_coordinates_unique, on='Job ID', how='outer')
+```
+```{python}
+#The merged dataframe has 2812 records
+merged_df.sample()
+```
+```{python}
+### Drop the job postings with NaN latitude
+merged_df.dropna(subset=['latitude'], inplace=True)
+merged_df.shape
+```
+```{python}
+merged_df.head()
+```
+```{python}
+##Identifying distinct keywords splitting  the 'Job Category' values by `,` and `&`
+lst_Job_Category = merged_df['Job Category']
+lst_Job_Category = list(lst_Job_Category)
+lst2 = [i.strip(' ').strip('&').strip(' ') for item in lst_Job_Category for i in item.split(',')]
+Job_Categories = sorted(list(set([i.strip(' ') for item in lst2 for i in item.split('&')])))
+print(Job_Categories)
+```
+```{python}
+len(Job_Categories)
+```
+```{python}
+## Find number of Job postings for each 'Job Category' keyword
+# Find occurrences for each substring 
+counts = {substring: merged_df['Job Category'].str.contains(substring).sum() for substring in Job_Categories} 
+sorted_counts = dict(sorted(counts.items(), key=lambda item: item[1], reverse=True)) 
+print(sorted_counts)
+```
+```{python}
+import altair as alt
+
+# Convert to DataFrame
+df_t = pd.DataFrame(list(sorted_counts.items()), columns=["Category", "Value"])
+
+# Sort by values
+df_sorted = df_t.sort_values(by="Value", ascending=False)
+
+# Top 10 largest values
+top_10 = df_sorted.head(10)
+
+# Bottom 10 smallest values
+bottom_10 = df_sorted.tail(10)
+
+# Visualization for top 10
+top_10_chart = alt.Chart(top_10).mark_bar().encode(
+    x=alt.X("Value:Q", title="Value"),
+    y=alt.Y("Category:N", sort="-x", title="Category"),
+    color=alt.Color("Value:Q", scale=alt.Scale(scheme="blues"), title="Value"),
+    tooltip=["Category", "Value"]
+).properties(
+    title="Top 10 Keywords with most frequest job postings",
+    width=600,
+    height=400
+)
+
+# Visualization for bottom 10
+bottom_10_chart = alt.Chart(bottom_10).mark_bar().encode(
+    x=alt.X("Value:Q", title="Value"),
+    y=alt.Y("Category:N", sort="x", title="Category"),
+    color=alt.Color("Value:Q", scale=alt.Scale(scheme="reds"), title="Value"),
+    tooltip=["Category", "Value"]
+).properties(
+    title="Top 10 Keywords with Least Frequent Job Postings",
+    width=600,
+    height=400
+)
+
+# Display the charts
+(top_10_chart & bottom_10_chart).show()
+
+```
+```{python}
+# Assuming merged_df is already loaded and contains the required data
+
+# Convert Salary Range columns to numeric
+merged_df['Salary Range From'] = pd.to_numeric(merged_df['Salary Range From'], errors='coerce')
+merged_df['Salary Range To'] = pd.to_numeric(merged_df['Salary Range To'], errors='coerce')
+
+# Calculate the average salary for each job posting
+merged_df['Average Salary'] = (merged_df['Salary Range From'] + merged_df['Salary Range To']) / 2
+
+# Initialize a dictionary to store the results
+salary_summary = {}
+
+# Iterate through the keys in the data_dict
+for key in sorted_counts.keys():
+    # Filter rows where the 'Job Category' contains the key as a substring
+    filtered_df = merged_df[merged_df['Job Category'].str.contains(key, case=False, na=False)]
+    
+    # Calculate highest, lowest, and average salaries for this key
+    highest_salary = filtered_df['Average Salary'].max()
+    lowest_salary = filtered_df['Average Salary'].min()
+    average_salary = filtered_df['Average Salary'].mean()
+    
+    # Store the results in the dictionary
+    salary_summary[key] = {
+        'Highest Salary': highest_salary,
+        'Lowest Salary': lowest_salary,
+        'Average Salary': average_salary
+    }
+
+# Convert the results to a DataFrame for better readability
+salary_summary_df = pd.DataFrame.from_dict(salary_summary, orient='index')
+salary_summary_df.reset_index(inplace=True)
+salary_summary_df.rename(columns={'index': 'Job Category'}, inplace=True)
+
+salary_summary_df.head()  # Displaying first few rows of the results
+
+```
+```{python}
+# Sort the DataFrame by 'Highest Salary' and 'Lowest Salary'
+top_10_highest_paid = salary_summary_df.sort_values(by='Average Salary', ascending=False).head(10)
+top_10_lowest_paid = salary_summary_df.sort_values(by='Highest Salary', ascending=True).head(10)
+
+# Create a bar chart for the top 10 highest paid job categories
+highest_paid_chart = alt.Chart(top_10_highest_paid).mark_bar().encode(
+    x=alt.X('Highest Salary:Q', title='Highest Salary'),
+    y=alt.Y('Job Category:N', sort='-x', title='Job Category'),
+    color=alt.Color('Highest Salary:Q', scale=alt.Scale(scheme='blues')),
+    tooltip=['Job Category', 'Highest Salary', 'Lowest Salary', 'Average Salary']
+).properties(
+    title='Top 10 Job Categories with Highest Average Salaries',
+    width=600,
+    height=400
+)
+
+# Create a bar chart for the top 10 lowest paid job categories
+lowest_paid_chart = alt.Chart(top_10_lowest_paid).mark_bar().encode(
+    x=alt.X('Lowest Salary:Q', title='Lowest Salary'),
+    y=alt.Y('Job Category:N', sort='x', title='Job Category'),
+    color=alt.Color('Lowest Salary:Q', scale=alt.Scale(scheme='reds')),
+    tooltip=['Job Category', 'Highest Salary', 'Lowest Salary', 'Average Salary']
+).properties(
+    title='Top 10 Job Categories with Lowest Average Salaries',
+    width=600,
+    height=400
+)
+
+# Display the charts
+(highest_paid_chart & lowest_paid_chart).show()
+
+```
+```{python}
+salary_summary_df.sample(15)
+```
+```{python}
+# Ensure 'Posting Date' column is in datetime format
+merged_df['Posting Date'] = pd.to_datetime(merged_df['Posting Date'], errors='coerce')
+
+# Extract year and month from 'Posting Date'
+merged_df['Year'] = merged_df['Posting Date'].dt.year
+merged_df['Month'] = merged_df['Posting Date'].dt.month
+
+# Group data by year and month to count job postings
+monthly_job_postings = (
+    merged_df.groupby(['Year', 'Month'])
+    .size()
+    .reset_index(name='Job Count')
+)
+
+# Define custom colors for years
+color_scale = alt.Scale(
+    domain=[2024, 2023, 2022, 2021],
+    range=["green", "blue", "yellow", "red"]
+)
+
+# Create an interactive line chart with custom colors
+chart = alt.Chart(monthly_job_postings).mark_line().encode(
+    x=alt.X('Month:O', title='Month', sort=list(range(1, 13))),
+    y=alt.Y('Job Count:Q', title='Job Postings'),
+    color=alt.Color('Year:N', scale=color_scale, title='Year'),
+    tooltip=['Year', 'Month', 'Job Count']
+).interactive().properties(
+    title='Month-by-Month Job Postings for Years 2021 to 2024',
+    width=800,
+    height=400
+)
+
+# Display the chart
+chart.show()
+
+```
+```{python}
+merged_df.to_csv('merged_df.csv')
+```
+```{python}
+import pandas as pd
+import plotly.express as px
+import geopandas as gpd
+
+# Load NYC job data
+file_path = 'merged_df.csv'  
+jobs_data = pd.read_csv(file_path)
+
+# Load NYC borough boundaries (GeoJSON file)
+nyc_boroughs_url = "https://data.cityofnewyork.us/resource/7t3b-ywvw.geojson"
+boroughs = gpd.read_file(nyc_boroughs_url)
+
+# Extract borough from job locations (assuming 'Work Location' column exists)
+# Simplified example if you have borough info directly in your dataset
+jobs_data['Borough'] = jobs_data['Work Location'].str.extract(r'(Manhattan|Brooklyn|Queens|Bronx|Staten Island)', expand=False)
+
+# Aggregate job counts by borough
+borough_job_counts = jobs_data['Borough'].value_counts().reset_index()
+borough_job_counts.columns = ['Borough', 'Job Count']
+
+# Merge job data with borough GeoJSON
+boroughs['Borough'] = boroughs['boro_name']
+merged = boroughs.merge(borough_job_counts, on='Borough', how='left')
+merged['Job Count'] = merged['Job Count'].fillna(0)  # Fill NaN values with 0 for visualization
+
+# Create the choropleth map
+fig = px.choropleth_mapbox(
+    merged,
+    geojson=merged.geometry,
+    locations=merged.index,
+    color='Job Count',
+    hover_name='Borough',
+    mapbox_style="carto-positron",
+    center={"lat": 40.7128, "lon": -74.0060},
+    zoom=9,
+    title="Job Density by Borough in NYC",
+    color_continuous_scale="Viridis"
+)
+
+# Adjust layout
+fig.update_geos(fitbounds="locations", visible=False)
+fig.update_layout(margin={"r": 0, "t": 30, "l": 0, "b": 0})
+
+# Show the map
+fig.show()
+
+```
+```{python}
+import pandas as pd
+import plotly.express as px
+
+# Load the data
+file_path = 'merged_df.csv'  
+data = pd.read_csv(file_path)
+
+# Aggregate job density and average salary by location
+location_data = data.groupby(['latitude', 'longitude']).agg(
+    job_density=('Job ID', 'count'),  # Counting Job IDs to get density
+    avg_salary=('Average Salary', 'mean')  # Mean salary per location
+).reset_index()
+
+
+# Cap the salary range between $30,000 and $150,000
+location_data['avg_salary_capped'] = location_data['avg_salary'].clip(lower=30000, upper=150000)
+
+# Create the map plot with the capped salary range
+fig = px.scatter_mapbox(
+    location_data,
+    lat="latitude",
+    lon="longitude",
+    size="job_density",
+    color="avg_salary_capped",
+    color_continuous_scale=[
+        (0.0, "blue"),   # Low salaries
+        (0.5, "green"),  # Midpoint
+        (1.0, "red")     # High salaries
+    ],
+    size_max=20,
+    zoom=10,
+    center={"lat": 40.7128, "lon": -74.0060},  # NYC coordinates
+    height=600,
+    title="Job Density vs. Average Salary in NYC (Capped $30k-$150k)"
+)
+
+# Set the map style and layout margins
+fig.update_layout(mapbox_style="carto-positron")
+fig.update_layout(margin={"r": 0, "t": 30, "l": 0, "b": 0})
+
+# Display the plot
+fig.show()
+
+
+```
+```{python}
+
+
+```

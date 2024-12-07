@@ -1,0 +1,15 @@
+---
+title: "Final Project "
+format: html
+---
+import pandas as pd
+# Load the NYC civil jobs data set in data frame
+df = pd.read_csv("Jobs_NYC_Postings.csv")
+df.head()
+```{python}
+# Python code here
+import pandas as pd
+df = pd.read_csv("Jobs_NYC_Postings.csv")
+df.head()
+
+
